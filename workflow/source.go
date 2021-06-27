@@ -1,6 +1,9 @@
 package workflow
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
 type SliceSource struct {
 	output     chan interface{}
@@ -29,15 +32,47 @@ func (s *SliceSource) context() context.Context {
 }
 
 func (s *SliceSource) Via(f Flow) Flow {
-	f.setPreNode(s)
-	f.run()
+	go func() {
+		defer close(f.In())
+		for i := range s.Out() {
+			select {
+			case f.In() <- i:
+			case <-s.ctx.Done():
+				return
+			}
+		}
+	}()
+	go f.run()
 	return f
 }
 func (s *SliceSource) Vias(flows ...Flow) []Flow {
-	for _, f := range flows {
-		f.setPreNode(s)
-		f.run()
-	}
+	go func() {
+		wgs := make([]sync.WaitGroup, len(flows))
+		for i := range s.Out() {
+			for index, _ := range wgs {
+				wgs[index].Add(1)
+			}
+			select {
+			case <-s.ctx.Done():
+				return
+			default:
+				for index, flow := range flows {
+					go func(index int, f Flow, i interface{}) {
+						defer wgs[index].Done()
+						f.In() <- i
+					}(index, flow, i)
+				}
+			}
+		}
+		for i, f := range flows {
+			defer func(index int, flow Flow) {
+				wgs[index].Wait()
+				close(flow.In())
+			}(i, f)
+			go f.run()
+		}
+	}()
+
 	return flows
 }
 

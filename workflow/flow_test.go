@@ -16,11 +16,14 @@ func TestFlow(t *testing.T) {
 	}, 0)
 
 	w3 := NewMap(func(i interface{}) interface{} {
-		return i.(float64) + 1.0
+		return float64(i.(int)) + 1.0
 	}, 0)
 
-	s.Via(w1).Via(w2).Via(w3)
+	s.Via(w1).Vias(w2, w3)
 	s.Start()
+	for i := range w2.Out() {
+		fmt.Println(i)
+	}
 	for i := range w3.Out() {
 		fmt.Println(i)
 	}

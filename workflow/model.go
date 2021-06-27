@@ -3,7 +3,7 @@ package workflow
 import "context"
 
 type Inlet interface {
-	setPreNode(Outlet)
+	In() chan<- interface{}
 }
 
 type Outlet interface {
