@@ -23,7 +23,7 @@ func NewSliceSource(items []interface{}) *SliceSource {
 		items:      items,
 	}
 }
-func (s *SliceSource) Out() <-chan interface{} {
+func (s *SliceSource) Out(int) <-chan interface{} {
 	return s.output
 }
 
@@ -31,10 +31,10 @@ func (s *SliceSource) context() context.Context {
 	return s.ctx
 }
 
-func (s *SliceSource) Via(f Flow) Flow {
+func (s *SliceSource) Via(num int, f Flow) Flow {
 	go func() {
 		defer close(f.In())
-		for i := range s.Out() {
+		for i := range s.Out(0) {
 			select {
 			case f.In() <- i:
 			case <-s.ctx.Done():
@@ -45,10 +45,16 @@ func (s *SliceSource) Via(f Flow) Flow {
 	go f.run()
 	return f
 }
-func (s *SliceSource) Vias(flows ...Flow) []Flow {
+func (s *SliceSource) Vias(num int, flows ...Flow) []Flow {
 	go func() {
 		wgs := make([]sync.WaitGroup, len(flows))
-		for i := range s.Out() {
+		for i, f := range flows {
+			defer func(index int, flow Flow) {
+				wgs[index].Wait()
+				close(flow.In())
+			}(i, f)
+		}
+		for i := range s.Out(0) {
 			for index, _ := range wgs {
 				wgs[index].Add(1)
 			}
@@ -64,11 +70,8 @@ func (s *SliceSource) Vias(flows ...Flow) []Flow {
 				}
 			}
 		}
-		for i, f := range flows {
-			defer func(index int, flow Flow) {
-				wgs[index].Wait()
-				close(flow.In())
-			}(i, f)
+
+		for _, f := range flows {
 			go f.run()
 		}
 	}()

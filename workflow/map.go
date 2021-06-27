@@ -38,21 +38,17 @@ var _ Flow = (*Map)(nil)
 func (m *Map) In() chan<- interface{} {
 	return m.input
 }
-func (m *Map) Out() <-chan interface{} {
+func (m *Map) Out(int) <-chan interface{} {
 	return m.output
 }
 func (m *Map) context() context.Context {
 	return m.ctx
 }
 
-func (m *Map) transmit(inlets ...Inlet) {
-
-}
-
-func (m *Map) Via(f Flow) Flow {
+func (m *Map) Via(num int, f Flow) Flow {
 	go func() {
 		defer close(f.In())
-		for i := range m.Out() {
+		for i := range m.Out(num) {
 			select {
 			case f.In() <- i:
 			case <-m.ctx.Done():
@@ -63,10 +59,18 @@ func (m *Map) Via(f Flow) Flow {
 	go f.run()
 	return f
 }
-func (m *Map) Vias(flows ...Flow) []Flow {
+func (m *Map) Vias(num int, flows ...Flow) []Flow {
 	go func() {
 		wgs := make([]sync.WaitGroup, len(flows))
-		for i := range m.Out() {
+		for i, f := range flows {
+			defer func(index int, flow Flow) {
+				wgs[index].Wait()
+				close(flow.In())
+			}(i, f)
+			go f.run()
+		}
+		for i := range m.Out(num) {
+
 			for index, _ := range wgs {
 				wgs[index].Add(1)
 			}
@@ -81,13 +85,6 @@ func (m *Map) Vias(flows ...Flow) []Flow {
 					}(index, flow, i)
 				}
 			}
-		}
-		for i, f := range flows {
-			defer func(index int, flow Flow) {
-				wgs[index].Wait()
-				close(flow.In())
-			}(i, f)
-			go f.run()
 		}
 	}()
 	return flows
@@ -118,9 +115,9 @@ func (m *Map) run() {
 	wg.Wait()
 }
 
-func (m *Map) To(s Sink) {
+func (m *Map) To(num int, s Sink) {
 	go func() {
-		for i := range m.Out() {
+		for i := range m.Out(num) {
 			select {
 			case s.In() <- i:
 			case <-m.ctx.Done():

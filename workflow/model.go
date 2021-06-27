@@ -7,7 +7,7 @@ type Inlet interface {
 }
 
 type Outlet interface {
-	Out() <-chan interface{}
+	Out(int) <-chan interface{}
 	context() context.Context
 }
 
@@ -19,16 +19,16 @@ type Flow interface {
 	Inlet
 	Outlet
 	Stop
-	Via(Flow) Flow
-	Vias(...Flow) []Flow
-	To(Sink)
+	Via(int, Flow) Flow
+	Vias(int, ...Flow) []Flow
+	To(int, Sink)
 	run()
 }
 
 type Source interface {
 	Outlet
-	Via(Flow) Flow
-	Vias(...Flow) []Flow
+	Via(int, Flow) Flow
+	Vias(int, ...Flow) []Flow
 	Start()
 	Stop
 }
