@@ -105,7 +105,6 @@ func (s *SplitMap) run() {
 		for c := range s.input {
 			for i, _ := range outwgs {
 				outwgs[i].Add(1)
-				//fmt.Println("get ", c, ",wg[", i, "] +1", "  ", time.Now())
 			}
 			for i, ins := range s.splitMapFunc(c) {
 				select {
@@ -116,7 +115,6 @@ func (s *SplitMap) run() {
 					go func(index int, ins interface{}) {
 						defer outwgs[index].Done()
 						s.output[index] <- ins
-						//fmt.Println("send ", ins, "wg[", index, "] -1", "  ", time.Now())
 					}(i, ins)
 				}
 			}
@@ -126,7 +124,6 @@ func (s *SplitMap) run() {
 	for i, _ := range outwgs {
 		defer func(index int) {
 			outwgs[index].Wait()
-			//fmt.Println("close ", index, "  ", time.Now())
 			close(s.output[index])
 		}(i)
 	}
@@ -143,6 +140,7 @@ func (s *SplitMap) run() {
 
 func (s *SplitMap) To(num int, sink Sink) {
 	go func() {
+		defer close(sink.In())
 		for i := range s.Out(num) {
 			select {
 			case sink.In() <- i:
@@ -151,4 +149,5 @@ func (s *SplitMap) To(num int, sink Sink) {
 			}
 		}
 	}()
+	go sink.run()
 }

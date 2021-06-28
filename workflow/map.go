@@ -117,6 +117,7 @@ func (m *Map) run() {
 
 func (m *Map) To(num int, s Sink) {
 	go func() {
+		defer close(s.In())
 		for i := range m.Out(num) {
 			select {
 			case s.In() <- i:
@@ -125,4 +126,5 @@ func (m *Map) To(num int, s Sink) {
 			}
 		}
 	}()
+	go s.run()
 }

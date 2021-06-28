@@ -6,26 +6,26 @@ import (
 	"sync"
 )
 
-type FilterFunc func(interface{}) bool
+type FlatMapFunc func(interface{}) []interface{}
 
-type Filter struct {
+type FlatMap struct {
 	input       chan interface{}
 	output      chan interface{}
 	parallelism int
 	ctx         context.Context
 	cancelFunc  context.CancelFunc
-	filterFunc  FilterFunc
+	flatMapFunc FlatMapFunc
 }
 
-func NewFilter(filterFunc FilterFunc, parallelism int) *Filter {
+func NewFlatMap(flatMapFunc FlatMapFunc, parallelism int) *FlatMap {
 	ctx, cancel := context.WithCancel(context.Background())
-	ret := &Filter{
+	ret := &FlatMap{
 		input:       make(chan interface{}),
 		output:      make(chan interface{}),
 		parallelism: parallelism,
 		ctx:         ctx,
 		cancelFunc:  cancel,
-		filterFunc:  filterFunc,
+		flatMapFunc: flatMapFunc,
 	}
 	if ret.parallelism <= 0 {
 		ret.parallelism = runtime.NumCPU()
@@ -33,25 +33,25 @@ func NewFilter(filterFunc FilterFunc, parallelism int) *Filter {
 	return ret
 }
 
-var _ Flow = (*Filter)(nil)
+var _ Flow = (*FlatMap)(nil)
 
-func (f *Filter) In() chan<- interface{} {
-	return f.input
+func (m *FlatMap) In() chan<- interface{} {
+	return m.input
 }
-func (f *Filter) Out(int) <-chan interface{} {
-	return f.output
+func (m *FlatMap) Out(int) <-chan interface{} {
+	return m.output
 }
-func (f *Filter) context() context.Context {
-	return f.ctx
+func (m *FlatMap) context() context.Context {
+	return m.ctx
 }
 
-func (filter *Filter) Via(num int, f Flow) Flow {
+func (m *FlatMap) Via(num int, f Flow) Flow {
 	go func() {
 		defer close(f.In())
-		for i := range filter.Out(num) {
+		for i := range m.Out(num) {
 			select {
 			case f.In() <- i:
-			case <-filter.ctx.Done():
+			case <-m.ctx.Done():
 				return
 			}
 		}
@@ -59,7 +59,7 @@ func (filter *Filter) Via(num int, f Flow) Flow {
 	go f.run()
 	return f
 }
-func (f *Filter) Vias(num int, flows ...Flow) []Flow {
+func (m *FlatMap) Vias(num int, flows ...Flow) []Flow {
 	go func() {
 		wgs := make([]sync.WaitGroup, len(flows))
 		for i, f := range flows {
@@ -69,13 +69,12 @@ func (f *Filter) Vias(num int, flows ...Flow) []Flow {
 			}(i, f)
 			go f.run()
 		}
-		for i := range f.Out(num) {
-
+		for i := range m.Out(num) {
 			for index, _ := range wgs {
 				wgs[index].Add(1)
 			}
 			select {
-			case <-f.ctx.Done():
+			case <-m.ctx.Done():
 				return
 			default:
 				for index, flow := range flows {
@@ -89,26 +88,27 @@ func (f *Filter) Vias(num int, flows ...Flow) []Flow {
 	}()
 	return flows
 }
-func (f *Filter) Close() {
-	f.cancelFunc()
+func (m *FlatMap) Close() {
+	m.cancelFunc()
 }
-func (f *Filter) run() {
-	defer close(f.output)
+func (m *FlatMap) run() {
+	defer close(m.output)
 	var wg sync.WaitGroup
-	wg.Add(f.parallelism)
+	wg.Add(m.parallelism)
 	fn := func() {
-		for i := range f.input {
-			if f.filterFunc(i) {
+		for i := range m.input {
+			outs := m.flatMapFunc(i)
+			for _, item := range outs {
 				select {
-				case f.output <- i:
-				case <-f.ctx.Done():
-					f.cancelFunc()
+				case m.output <- item:
+				case <-m.ctx.Done():
+					m.cancelFunc()
 					return
 				}
 			}
 		}
 	}
-	for i := 0; i < f.parallelism; i++ {
+	for i := 0; i < m.parallelism; i++ {
 		go func() {
 			defer wg.Done()
 			fn()
@@ -117,13 +117,13 @@ func (f *Filter) run() {
 	wg.Wait()
 }
 
-func (f *Filter) To(num int, s Sink) {
+func (m *FlatMap) To(num int, s Sink) {
 	go func() {
 		defer close(s.In())
-		for i := range f.Out(num) {
+		for i := range m.Out(num) {
 			select {
 			case s.In() <- i:
-			case <-f.ctx.Done():
+			case <-m.ctx.Done():
 				return
 			}
 		}
