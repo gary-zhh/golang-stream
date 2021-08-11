@@ -8,6 +8,7 @@ import (
 
 type MapFunc func(interface{}) interface{}
 
+// TODO: need to handle error
 type Map struct {
 	input       chan interface{}
 	output      chan interface{}

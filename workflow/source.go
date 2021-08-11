@@ -53,6 +53,7 @@ func (s *SliceSource) Vias(num int, flows ...Flow) []Flow {
 				wgs[index].Wait()
 				close(flow.In())
 			}(i, f)
+			go f.run()
 		}
 		for i := range s.Out(0) {
 			for index, _ := range wgs {
@@ -70,12 +71,7 @@ func (s *SliceSource) Vias(num int, flows ...Flow) []Flow {
 				}
 			}
 		}
-
-		for _, f := range flows {
-			go f.run()
-		}
 	}()
-
 	return flows
 }
 
