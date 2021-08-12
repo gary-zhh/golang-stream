@@ -25,10 +25,20 @@ func NewCombine(parallelism int, flows ...Flow) *Combine {
 	}
 	for i := 0; i < len(flows); i++ {
 		ret.input[i] = make(chan interface{})
+		go func(i int) {
+			for item := range flows[i].Out(0) {
+				select {
+				case ret.input[i] <- item:
+				case <-ret.ctx.Done():
+					return
+				}
+			}
+		}(i)
 	}
 	if ret.parallelism <= 0 {
 		ret.parallelism = runtime.NumCPU()
 	}
+	go ret.run()
 	return ret
 }
 
@@ -97,6 +107,7 @@ func (c *Combine) run() {
 	var wg sync.WaitGroup
 	wg.Add(c.parallelism * len(c.input))
 	fn := func(ch chan interface{}) {
+		defer wg.Done()
 		for i := range ch {
 			select {
 			case c.output <- i:
@@ -109,11 +120,11 @@ func (c *Combine) run() {
 	for i := 0; i < c.parallelism; i++ {
 		for _, ch := range c.input {
 			go func(ch chan interface{}) {
-				defer wg.Done()
 				fn(ch)
 			}(ch)
 		}
 	}
+	wg.Wait()
 }
 
 func (c *Combine) To(num int, s Sink) {

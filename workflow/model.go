@@ -25,6 +25,7 @@ type Flow interface {
 	run()
 }
 
+// source support flow
 type Source interface {
 	Outlet
 	Via(int, Flow) Flow
