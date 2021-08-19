@@ -7,33 +7,21 @@ import (
 )
 
 type Combine struct {
-	input       []chan interface{}
 	output      chan interface{}
 	parallelism int
 	ctx         context.Context
 	cancelFunc  context.CancelFunc
+	income      []Flow
 }
 
 func NewCombine(parallelism int, flows ...Flow) *Combine {
 	ctx, cancel := context.WithCancel(context.Background())
 	ret := &Combine{
-		input:       make([]chan interface{}, len(flows)),
 		output:      make(chan interface{}),
 		parallelism: parallelism,
 		ctx:         ctx,
 		cancelFunc:  cancel,
-	}
-	for i := 0; i < len(flows); i++ {
-		ret.input[i] = make(chan interface{})
-		go func(i int) {
-			for item := range flows[i].Out(0) {
-				select {
-				case ret.input[i] <- item:
-				case <-ret.ctx.Done():
-					return
-				}
-			}
-		}(i)
+		income:      flows,
 	}
 	if ret.parallelism <= 0 {
 		ret.parallelism = runtime.NumCPU()
@@ -105,9 +93,8 @@ func (c *Combine) Close() {
 func (c *Combine) run() {
 	defer close(c.output)
 	var wg sync.WaitGroup
-	wg.Add(c.parallelism * len(c.input))
-	fn := func(ch chan interface{}) {
-		defer wg.Done()
+	wg.Add(c.parallelism * len(c.income))
+	fn := func(ch <-chan interface{}) {
 		for i := range ch {
 			select {
 			case c.output <- i:
@@ -118,10 +105,12 @@ func (c *Combine) run() {
 		}
 	}
 	for i := 0; i < c.parallelism; i++ {
-		for _, ch := range c.input {
-			go func(ch chan interface{}) {
+		//for _, ch := range c.input {
+		for _, f := range c.income {
+			go func(ch <-chan interface{}) {
+				defer wg.Done()
 				fn(ch)
-			}(ch)
+			}(f.Out(0))
 		}
 	}
 	wg.Wait()

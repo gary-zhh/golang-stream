@@ -1,3 +1,3 @@
-module github/zhouhaihai/golang-stream
+module github.com/gary-zhh/golang-stream
 
-go 1.14
+go 1.16

@@ -118,28 +118,27 @@ func (m *ErrorMap) Close() {
 	m.cancelFunc()
 }
 func (m *ErrorMap) run() {
-	defer close(m.errorC)
 	defer close(m.output)
 	var wg sync.WaitGroup
 	wg.Add(m.parallelism)
 	fn := func() {
 		for i := range m.input {
-			res, err := m.errorMapFunc(i)
-			if err != nil {
-				select {
-				case m.errorC <- m.handleErrorItem(i):
-				case <-m.ctx.Done():
-					m.cancelFunc()
-					return
-				}
-			} else {
-				select {
-				case m.output <- res:
-				case <-m.ctx.Done():
-					m.cancelFunc()
-					return
-				}
+			res, _ := m.errorMapFunc(i)
+			//if err != nil {
+			// select {
+			// case m.errorC <- m.handleErrorItem(i):
+			// case <-m.ctx.Done():
+			// 	m.cancelFunc()
+			// 	return
+			// }
+			//} else {
+			select {
+			case m.output <- res:
+			case <-m.ctx.Done():
+				m.cancelFunc()
+				return
 			}
+			//}
 		}
 	}
 	for i := 0; i < m.parallelism; i++ {
@@ -149,7 +148,7 @@ func (m *ErrorMap) run() {
 		}()
 	}
 	wg.Wait()
-
+	close(m.errorC)
 }
 
 func (m *ErrorMap) To(num int, s Sink) {
